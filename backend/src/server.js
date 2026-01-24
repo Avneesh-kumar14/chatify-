@@ -20,13 +20,17 @@ app.use(express.json({ limit: "5mb" })); // req.body
 app.use(cors({ origin: ENV.CLIENT_URL, credentials: true }));
 app.use(cookieParser());
 
+// API routes MUST come before frontend serving
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
 
-// ✅ PRODUCTION: Serve React frontend
-if (ENV.NODE_ENV === "production") {
-  const frontendPath = path.join(__dirname, "../../frontend/dist");
+// ✅ PRODUCTION: Serve React frontend (LAST - catches all remaining routes)
+if (process.env.NODE_ENV === "production") {
+  const frontendPath = path.join(process.cwd(), "frontend", "dist");
   
+  console.log("Serving frontend from:", frontendPath);
+  console.log("NODE_ENV:", process.env.NODE_ENV);
+
   app.use(express.static(frontendPath));
 
   app.get("*", (req, res) => {
