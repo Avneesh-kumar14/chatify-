@@ -10,3 +10,26 @@ services:
         value: production
       - key: PORT
         value: 3000
+      - key: MONGO_URI
+        fromDatabase:
+          name: chatify
+          property: connectionString
+      - key: JWT_SECRET
+        sync: false
+      - key: GMAIL_EMAIL
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+databases:
+  - name: chatify
+    ipAllowList: []
+
