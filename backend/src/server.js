@@ -24,19 +24,16 @@ app.use(cookieParser());
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
 
-// ✅ PRODUCTION: Serve React frontend (LAST - catches all remaining routes)
-if (process.env.NODE_ENV === "production") {
-  const frontendPath = path.join(process.cwd(), "frontend", "dist");
-  
-  console.log("Serving frontend from:", frontendPath);
-  console.log("NODE_ENV:", process.env.NODE_ENV);
+// ✅ Serve React frontend (ALWAYS - no env dependency)
+const frontendPath = path.join(process.cwd(), "frontend", "dist");
 
-  app.use(express.static(frontendPath));
+console.log("Serving frontend from:", frontendPath);
 
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(frontendPath, "index.html"));
-  });
-}
+app.use(express.static(frontendPath));
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(frontendPath, "index.html"));
+});
 
 server.listen(PORT, () => {
   console.log("Server running on port: " + PORT);
