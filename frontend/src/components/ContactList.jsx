@@ -9,9 +9,10 @@ function ContactList() {
 
   useEffect(() => {
     getAllContacts();
-  }, [getAllContacts]);
+  }, []);
 
   if (isUsersLoading) return <UsersLoadingSkeleton />;
+  if (!Array.isArray(allContacts) || allContacts.length === 0) return <div className="text-slate-500 text-center py-8">No contacts found</div>;
 
   return (
     <>

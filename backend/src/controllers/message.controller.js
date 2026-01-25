@@ -1,108 +1,268 @@
-import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
-import Message from "../models/Message.js";
 import User from "../models/User.js";
+import MessageService from "../services/message.service.js";
+import UserService from "../services/user.service.js";
+import CacheService from "../services/cache.service.js";
+import { asyncHandler } from "../lib/errors.js";
 
-export const getAllContacts = async (req, res) => {
-  try {
-    const loggedInUserId = req.user._id;
-    const filteredUsers = await User.find({ _id: { $ne: loggedInUserId } }).select("-password");
+/**
+ * ============================================
+ * MESSAGE CONTROLLER
+ * ============================================
+ * 
+ * Thin HTTP handler layer
+ * Business logic delegated to services
+ * Benefits:
+ * - Easy to test (mock services)
+ * - Easy to extend (add WebSocket handler with same service)
+ * - Consistent error handling (via asyncHandler)
+ */
 
-    res.status(200).json(filteredUsers);
-  } catch (error) {
-    console.log("Error in getAllContacts:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-};
+/**
+ * Get all contacts (all users except self)
+ */
+export const getAllContacts = asyncHandler(async (req, res) => {
+  const users = await UserService.getAllUsers(req.user._id);
+  
+  res.status(200).json({
+    success: true,
+    data: users,
+    message: "Contacts fetched successfully",
+  });
+});
 
-export const getMessagesByUserId = async (req, res) => {
-  try {
-    const myId = req.user._id;
-    const { id: userToChatId } = req.params;
+/**
+ * Get messages between two users
+ * Implements pagination with cursor
+ */
+export const getMessagesByUserId = asyncHandler(async (req, res) => {
+  const { id: otherUserId } = req.params;
+  const { limit = 20, cursor } = req.query;
 
-    const messages = await Message.find({
-      $or: [
-        { senderId: myId, receiverId: userToChatId },
-        { senderId: userToChatId, receiverId: myId },
-      ],
+  const result = await MessageService.getMessagesByUserId(
+    req.user._id,
+    otherUserId,
+    limit,
+    cursor
+  );
+
+  res.status(200).json({
+    success: true,
+    data: result.messages,
+    pagination: {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+      limit: parseInt(limit) || 20,
+    },
+    message: "Messages fetched successfully",
+  });
+});
+
+/**
+ * Send message
+ * 
+ * Flow:
+ * 1. Service validates & creates message
+ * 2. Controller broadcasts via WebSocket
+ * 3. Client receives via HTTP response
+ */
+export const sendMessage = asyncHandler(async (req, res) => {
+  const { text, image } = req.body;
+  const { id: receiverId } = req.params;
+
+  // Service handles all validation, rate limiting, DB operations
+  const newMessage = await MessageService.sendMessage(
+    req.user._id,
+    receiverId,
+    { text, image }
+  );
+
+  // Update message status to "sent" before sending response
+  newMessage.status = "sent";
+  await newMessage.save();
+
+  // Convert to object for response (includes senderIdValue)
+  const messageObj = newMessage.toObject();
+
+  // WEBSOCKET: Broadcast to receiver (if online)
+  // Receiver's client will deduplicate if already received via HTTP
+  const receiverSocketId = getReceiverSocketId(receiverId);
+  if (receiverSocketId) {
+    io.to(receiverSocketId).emit("newMessage", {
+      ...messageObj,
+      status: "delivered", // Mark as delivered immediately if receiver is online
     });
-
-    res.status(200).json(messages);
-  } catch (error) {
-    console.log("Error in getMessages controller: ", error.message);
-    res.status(500).json({ error: "Internal server error" });
   }
-};
 
-export const sendMessage = async (req, res) => {
-  try {
-    const { text, image } = req.body;
-    const { id: receiverId } = req.params;
-    const senderId = req.user._id;
+  res.status(201).json({
+    success: true,
+    data: messageObj,
+    message: "Message sent successfully",
+  });
+});
 
-    if (!text && !image) {
-      return res.status(400).json({ message: "Text or image is required." });
-    }
-    if (senderId.equals(receiverId)) {
-      return res.status(400).json({ message: "Cannot send messages to yourself." });
-    }
-    const receiverExists = await User.exists({ _id: receiverId });
-    if (!receiverExists) {
-      return res.status(404).json({ message: "Receiver not found." });
-    }
+/**
+ * Get chat partners (users with active conversations)
+ */
+export const getChatPartners = asyncHandler(async (req, res) => {
+  const chatPartners = await MessageService.getChatPartners(req.user._id);
 
-    let imageUrl;
-    if (image) {
-      // upload base64 image to cloudinary
-      const uploadResponse = await cloudinary.uploader.upload(image);
-      imageUrl = uploadResponse.secure_url;
-    }
+  res.status(200).json({
+    success: true,
+    data: chatPartners,
+    message: "Chat partners fetched successfully",
+  });
+});
 
-    const newMessage = new Message({
-      senderId,
-      receiverId,
-      text,
-      image: imageUrl,
+/**
+ * Get unread message count
+ */
+export const getUnreadCount = asyncHandler(async (req, res) => {
+  const unreadCount = await MessageService.getUnreadCount(req.user._id);
+
+  res.status(200).json({
+    success: true,
+    data: { unreadCount },
+    message: "Unread count fetched successfully",
+  });
+});
+
+/**
+ * Mark message as read
+ */
+export const markMessageAsRead = asyncHandler(async (req, res) => {
+  const { messageId } = req.params;
+
+  const message = await MessageService.markMessageRead(messageId, req.user._id);
+
+  // Broadcast to sender that message was read
+  const senderSocketId = getReceiverSocketId(message.senderId.toString());
+  if (senderSocketId) {
+    io.to(senderSocketId).emit("messageRead", {
+      messageId: message._id,
+      readAt: message.readAt,
     });
-
-    await newMessage.save();
-
-    const receiverSocketId = getReceiverSocketId(receiverId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("newMessage", newMessage);
-    }
-
-    res.status(201).json(newMessage);
-  } catch (error) {
-    console.log("Error in sendMessage controller: ", error.message);
-    res.status(500).json({ error: "Internal server error" });
   }
-};
 
-export const getChatPartners = async (req, res) => {
-  try {
-    const loggedInUserId = req.user._id;
+  res.status(200).json({
+    success: true,
+    data: message,
+    message: "Message marked as read",
+  });
+});
 
-    // find all the messages where the logged-in user is either sender or receiver
-    const messages = await Message.find({
-      $or: [{ senderId: loggedInUserId }, { receiverId: loggedInUserId }],
+/**
+ * Mark all messages in conversation as read
+ */
+export const markConversationAsRead = asyncHandler(async (req, res) => {
+  const { otherUserId } = req.params;
+
+  const result = await MessageService.markConversationAsRead(
+    req.user._id,
+    otherUserId
+  );
+
+  // Broadcast to conversation partner
+  const partnerSocketId = getReceiverSocketId(otherUserId);
+  if (partnerSocketId) {
+    io.to(partnerSocketId).emit("conversationRead", {
+      userId: req.user._id,
+      readAt: new Date(),
     });
-
-    const chatPartnerIds = [
-      ...new Set(
-        messages.map((msg) =>
-          msg.senderId.toString() === loggedInUserId.toString()
-            ? msg.receiverId.toString()
-            : msg.senderId.toString()
-        )
-      ),
-    ];
-
-    const chatPartners = await User.find({ _id: { $in: chatPartnerIds } }).select("-password");
-
-    res.status(200).json(chatPartners);
-  } catch (error) {
-    console.error("Error in getChatPartners: ", error.message);
-    res.status(500).json({ error: "Internal server error" });
   }
-};
+
+  res.status(200).json({
+    success: true,
+    data: result,
+    message: "Conversation marked as read",
+  });
+});
+
+/**
+ * Edit message (only sender can edit within 1 hour)
+ */
+export const editMessage = asyncHandler(async (req, res) => {
+  const { messageId } = req.params;
+  const { text } = req.body;
+
+  const editedMessage = await MessageService.editMessage(
+    messageId,
+    req.user._id,
+    text
+  );
+
+  // Broadcast edit to conversation partner
+  const receiverSocketId = getReceiverSocketId(editedMessage.receiverId.toString());
+  if (receiverSocketId) {
+    io.to(receiverSocketId).emit("messageEdited", {
+      messageId: editedMessage._id,
+      text: editedMessage.text,
+      editedAt: editedMessage.editedAt,
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    data: editedMessage,
+    message: "Message edited successfully",
+  });
+});
+
+/**
+ * Delete message (soft delete)
+ */
+export const deleteMessage = asyncHandler(async (req, res) => {
+  const { messageId } = req.params;
+
+  const deletedMessage = await MessageService.softDeleteMessage(
+    messageId,
+    req.user._id
+  );
+
+  // Broadcast deletion to conversation partner
+  const receiverSocketId = getReceiverSocketId(deletedMessage.receiverId.toString());
+  if (receiverSocketId) {
+    io.to(receiverSocketId).emit("messageDeleted", {
+      messageId: deletedMessage._id,
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    data: deletedMessage,
+    message: "Message deleted successfully",
+  });
+});
+
+/**
+ * Delete entire conversation (all messages between two users)
+ */
+export const deleteConversation = asyncHandler(async (req, res) => {
+  const { otherUserId } = req.params;
+
+  const result = await MessageService.deleteConversation(
+    req.user._id,
+    otherUserId
+  );
+
+  res.status(200).json({
+    success: true,
+    data: result,
+    message: "Conversation deleted successfully",
+  });
+});
+
+/**
+ * Search users
+ */
+export const searchUsers = asyncHandler(async (req, res) => {
+  const { query } = req.query;
+
+  const users = await UserService.searchUsers(query, req.user._id);
+
+  res.status(200).json({
+    success: true,
+    data: users,
+    message: "Users found",
+  });
+});

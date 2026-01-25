@@ -9,6 +9,7 @@ import messageRoutes from "./routes/message.route.js";
 import { connectDB } from "./lib/db.js";
 import { ENV } from "./lib/env.js";
 import { app, server } from "./lib/socket.js";
+import { errorHandler } from "./lib/errors.js";
 
 // Correctly set __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -35,7 +36,11 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(frontendPath, "index.html"));
 });
 
+// ✅ ERROR HANDLING MIDDLEWARE (MUST be last)
+app.use(errorHandler);
+
 server.listen(PORT, () => {
   console.log("Server running on port: " + PORT);
   connectDB();
 });
+
