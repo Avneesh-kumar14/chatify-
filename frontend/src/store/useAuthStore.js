@@ -3,7 +3,20 @@ import { axiosInstance } from "../lib/axios";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
 
-const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:8200" : "/";
+// Get the base URL dynamically
+const getSocketURL = () => {
+  if (typeof window === "undefined") return "/";
+  
+  const protocol = window.location.protocol; // http: or https:
+  const hostname = window.location.hostname;
+  const port = window.location.port;
+
+  // If we have a port, use it; otherwise rely on current host
+  if (port) {
+    return `${protocol}//${hostname}:${port}`;
+  }
+  return `${protocol}//${hostname}`;
+};
 
 export const useAuthStore = create((set, get) => ({
   authUser: null,
@@ -19,8 +32,13 @@ export const useAuthStore = create((set, get) => ({
       set({ authUser: res.data });
       get().connectSocket();
     } catch (error) {
-      console.log("Error in authCheck:", error);
-      set({ authUser: null });
+      // 401 is expected when not logged in
+      if (error.response?.status === 401) {
+        set({ authUser: null });
+      } else {
+        console.log("Error in authCheck:", error.message);
+        set({ authUser: null });
+      }
     } finally {
       set({ isCheckingAuth: false });
     }
@@ -88,7 +106,8 @@ export const useAuthStore = create((set, get) => ({
     const { authUser } = get();
     if (!authUser || get().socket?.connected) return;
 
-    const socket = io(BASE_URL, {
+    const socketURL = getSocketURL();
+    const socket = io(socketURL, {
       withCredentials: true, // this ensures cookies are sent with the connection
     });
 

@@ -1,4 +1,5 @@
 import { useChatStore } from "../store/useChatStore";
+import { useThemeStore } from "../store/useThemeStore";
 
 import BorderAnimatedContainer from "../components/BorderAnimatedContainer";
 import ProfileHeader from "../components/ProfileHeader";
@@ -10,12 +11,14 @@ import NoConversationPlaceholder from "../components/NoConversationPlaceholder";
 
 function ChatPage() {
   const { activeTab, selectedUser } = useChatStore();
+  const { getThemeConfig } = useThemeStore();
+  const themeConfig = getThemeConfig();
 
   return (
     <div className="relative w-full max-w-6xl h-[800px]">
       <BorderAnimatedContainer>
-        {/* LEFT SIDE */}
-        <div className="w-80 bg-slate-800/50 backdrop-blur-sm flex flex-col">
+        {/* LEFT SIDE - Chat List with Theme */}
+        <div className={`w-80 ${themeConfig.secondary} backdrop-blur-sm flex flex-col transition-all duration-300`}>
           <ProfileHeader />
           <ActiveTabSwitch />
 
@@ -24,8 +27,8 @@ function ChatPage() {
           </div>
         </div>
 
-        {/* RIGHT SIDE */}
-        <div className="flex-1 flex flex-col bg-slate-900/50 backdrop-blur-sm">
+        {/* RIGHT SIDE - Chat Container with Theme */}
+        <div className={`flex-1 flex flex-col ${themeConfig.primary} backdrop-blur-sm transition-all duration-300`}>
           {selectedUser ? <ChatContainer /> : <NoConversationPlaceholder />}
         </div>
       </BorderAnimatedContainer>

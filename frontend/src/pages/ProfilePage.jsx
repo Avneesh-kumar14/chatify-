@@ -3,12 +3,17 @@ import { useNavigate } from "react-router";
 import { useAuthStore } from "../store/useAuthStore";
 import { useChatStore } from "../store/useChatStore";
 import { axiosInstance } from "../lib/axios.js";
+import { useThemeStore } from "../store/useThemeStore.js";
 import toast from "react-hot-toast";
+import ConfirmationModal from "../components/ConfirmationModal";
+import ThemeToggle from "../components/ThemeToggle";
 
 function ProfilePage() {
   const navigate = useNavigate();
   const { authUser, logout, setAuthUser } = useAuthStore();
   const { getMessagesByUserId } = useChatStore();
+  const { getThemeConfig } = useThemeStore();
+  const themeConfig = getThemeConfig();
   
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -17,6 +22,8 @@ function ProfilePage() {
     profilePic: authUser?.profilePic || "",
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [logoutConfirm, setLogoutConfirm] = useState(false);
+  const [logoutLoading, setLogoutLoading] = useState(false);
   const fileInputRef = useRef(null);
 
   if (!authUser) {
@@ -55,31 +62,78 @@ function ProfilePage() {
     try {
       const response = await axiosInstance.put("/auth/update-profile", formData);
       if (response.data.success) {
-        toast.success("Profile updated successfully");
+        toast.success("Profile updated successfully! 🎉", {
+          duration: 3000,
+          style: {
+            background: "#10b981",
+            color: "#fff",
+            borderRadius: "0.5rem",
+            padding: "16px",
+            fontWeight: "500",
+          },
+        });
         // Update the auth store with new user data
         setAuthUser(response.data.data);
         setIsEditing(false);
       }
     } catch (error) {
-      toast.error(error.response?.data?.message || "Failed to update profile");
+      toast.error(error.response?.data?.message || "Failed to update profile", {
+        duration: 3000,
+        style: {
+          background: "#ef4444",
+          color: "#fff",
+          borderRadius: "0.5rem",
+          padding: "16px",
+        },
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
+  const handleLogout = async () => {
+    setLogoutLoading(true);
+    try {
+      await logout();
+      toast.success("See you soon! 👋", {
+        duration: 2000,
+        style: {
+          background: "#3b82f6",
+          color: "#fff",
+          borderRadius: "0.5rem",
+          padding: "16px",
+          fontWeight: "500",
+        },
+      });
+      setTimeout(() => navigate("/login"), 500);
+    } catch (error) {
+      toast.error("Error logging out", {
+        duration: 3000,
+        style: {
+          background: "#ef4444",
+          color: "#fff",
+          borderRadius: "0.5rem",
+          padding: "16px",
+        },
+      });
+    } finally {
+      setLogoutLoading(false);
+      setLogoutConfirm(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 p-4">
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 p-4">
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:14px_24px] pointer-events-none" />
+      <div className="absolute top-0 -left-4 size-96 bg-pink-500 opacity-20 blur-[100px]" />
+      <div className="absolute bottom-0 -right-4 size-96 bg-cyan-500 opacity-20 blur-[100px]" />
+      
+      <div className="max-w-2xl mx-auto relative z-10">
+        {/* Header with Theme Toggle */}
         <div className="flex items-center justify-between mb-8">
           <button
-            onClick={() => navigate("/chat")}
-            className="btn btn-sm btn-ghost gap-2"
+            onClick={() => navigate("/")}
+            className="btn btn-sm btn-ghost gap-2 hover:bg-slate-700/50 transition-all text-cyan-400 hover:text-cyan-300"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -87,19 +141,19 @@ function ProfilePage() {
             Back to Chats
           </button>
           <h1 className="text-2xl font-bold text-white">Profile</h1>
-          <div className="w-10" />
+          <ThemeToggle />
         </div>
 
         {/* Profile Card */}
-        <div className="card bg-slate-800 shadow-xl border border-slate-700">
-          <div className="card-body">
+        <div className="bg-gradient-to-br from-slate-800/60 to-slate-800/40 shadow-2xl border border-cyan-500/30 rounded-xl transition-all duration-300 hover:shadow-cyan-500/20 hover:border-cyan-500/50 p-8">
+          <div className="space-y-6">
             {/* Profile Picture */}
-            <div className="flex justify-center mb-6">
-              <div className="relative">
+            <div className="flex justify-center mb-8">
+              <div className="relative group">
                 <img
                   src={formData.profilePic || "https://ui-avatars.com/api/?name=" + authUser.fullName}
                   alt={authUser.fullName}
-                  className="w-32 h-32 rounded-full border-4 border-cyan-600 object-cover"
+                  className="w-32 h-32 rounded-full border-4 border-cyan-500 object-cover shadow-lg shadow-cyan-500/40 group-hover:shadow-cyan-500/60 transition-all duration-300"
                 />
                 {isEditing && (
                   <button
@@ -167,7 +221,7 @@ function ProfilePage() {
                 {/* Edit Button */}
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="btn btn-primary btn-sm w-full gap-2"
+                  className="btn btn-sm w-full gap-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-white border-0 hover:from-cyan-600 hover:to-blue-600 transition-all duration-200 font-semibold shadow-lg shadow-cyan-500/30 hover:shadow-cyan-500/50"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -181,7 +235,7 @@ function ProfilePage() {
                 {/* Full Name Input */}
                 <div className="form-control">
                   <label className="label">
-                    <span className="label-text">Full Name</span>
+                    <span className="label-text text-slate-300 font-semibold">Full Name</span>
                   </label>
                   <input
                     type="text"
@@ -189,21 +243,21 @@ function ProfilePage() {
                     value={formData.fullName}
                     onChange={handleInputChange}
                     placeholder="Enter your full name"
-                    className="input input-bordered input-sm bg-slate-700 text-white placeholder-slate-400"
+                    className="input input-bordered input-sm bg-slate-700/60 border-slate-600 text-white placeholder-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30 transition-all"
                   />
                 </div>
 
                 {/* Bio Input */}
                 <div className="form-control">
                   <label className="label">
-                    <span className="label-text">Bio</span>
+                    <span className="label-text text-slate-300 font-semibold">Bio</span>
                   </label>
                   <textarea
                     name="bio"
                     value={formData.bio}
                     onChange={handleInputChange}
                     placeholder="Write a short bio... (optional)"
-                    className="textarea textarea-bordered textarea-sm bg-slate-700 text-white placeholder-slate-400"
+                    className="textarea textarea-bordered textarea-sm bg-slate-700/60 border-slate-600 text-white placeholder-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30 transition-all"
                     rows="4"
                   />
                 </div>
@@ -211,11 +265,11 @@ function ProfilePage() {
                 <div className="divider"></div>
 
                 {/* Save & Cancel Buttons */}
-                <div className="flex gap-2">
+                <div className="flex gap-3">
                   <button
                     onClick={handleSaveProfile}
                     disabled={isLoading}
-                    className="btn btn-primary btn-sm flex-1 gap-2"
+                    className="btn btn-sm flex-1 gap-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-white border-0 hover:from-cyan-600 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold shadow-lg shadow-cyan-500/30"
                   >
                     {isLoading ? (
                       <>
@@ -241,7 +295,7 @@ function ProfilePage() {
                       });
                     }}
                     disabled={isLoading}
-                    className="btn btn-ghost btn-sm flex-1"
+                    className="btn btn-sm flex-1 border-slate-600 text-slate-300 hover:bg-slate-700/50 hover:border-slate-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                   >
                     Cancel
                   </button>
@@ -252,18 +306,41 @@ function ProfilePage() {
         </div>
 
         {/* Logout Button */}
-        <div className="mt-6">
+        <div className="mt-8">
           <button
-            onClick={handleLogout}
-            className="btn btn-error btn-outline w-full gap-2"
+            onClick={() => setLogoutConfirm(true)}
+            disabled={logoutLoading}
+            className="btn btn-outline w-full gap-2 text-red-400 border-red-500/50 hover:bg-red-500/10 hover:border-red-500 transition-all duration-300 font-semibold text-base py-3"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-            Logout
+            {logoutLoading ? (
+              <>
+                <span className="loading loading-spinner loading-sm"></span>
+                Logging out...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Logout
+              </>
+            )}
           </button>
         </div>
       </div>
+
+      {/* Logout Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={logoutConfirm}
+        title="Logout"
+        message="Are you sure you want to logout? You'll need to login again to access your chats."
+        onConfirm={handleLogout}
+        onCancel={() => setLogoutConfirm(false)}
+        confirmText="Logout"
+        cancelText="Cancel"
+        type="logout"
+        isLoading={logoutLoading}
+      />
     </div>
   );
 }

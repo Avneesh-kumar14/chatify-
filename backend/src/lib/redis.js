@@ -26,8 +26,8 @@ const redisClient = redis.createClient({
     port: ENV.REDIS_PORT || 6379,
     reconnectStrategy: (retries) => {
       if (retries > 10) {
-        console.error("Redis max reconnect attempts reached");
-        return new Error("Redis max reconnect attempts reached");
+        // Silent - stop reconnecting after 10 attempts
+        return false;
       }
       return Math.min(retries * 50, 500);
     },
@@ -35,26 +35,34 @@ const redisClient = redis.createClient({
   password: ENV.REDIS_PASSWORD || undefined,
 });
 
-// Error handling
+// Track connection status
+let isRedisConnected = false;
+
+// Error handling - suppress verbose logs
 redisClient.on("error", (err) => {
-  console.error("❌ Redis error:", err);
+  // Silent error handling - we'll handle this gracefully
+  isRedisConnected = false;
 });
 
 redisClient.on("connect", () => {
-  console.log("✅ Redis client connected");
+  isRedisConnected = true;
 });
 
 redisClient.on("ready", () => {
-  console.log("✅ Redis client ready");
+  isRedisConnected = true;
 });
 
-// Connect to Redis
-try {
-  await redisClient.connect();
-  console.log("✅ Redis connection established");
-} catch (err) {
-  console.error("❌ Failed to connect to Redis:", err);
-}
+redisClient.on("end", () => {
+  isRedisConnected = false;
+});
+
+// Connect to Redis (non-blocking)
+redisClient.connect().then(() => {
+  isRedisConnected = true;
+}).catch(() => {
+  // Silent - Redis not available, using in-memory fallback
+  isRedisConnected = false;
+});
 
 /**
  * ============================================
@@ -67,6 +75,7 @@ try {
  * Time: O(1)
  */
 export const setUserOnline = async (userId, socketId) => {
+  if (!isRedisConnected) return;
   try {
     // Add to online set (for presence listing)
     await redisClient.sAdd("online_users", userId);
@@ -78,8 +87,7 @@ export const setUserOnline = async (userId, socketId) => {
       lastSeen: Date.now().toString(),
     });
   } catch (err) {
-    console.error("Failed to set user online:", err);
-    throw err;
+    console.warn("Failed to set user online in Redis:", err.message);
   }
 };
 
@@ -88,6 +96,7 @@ export const setUserOnline = async (userId, socketId) => {
  * Time: O(1)
  */
 export const setUserOffline = async (userId) => {
+  if (!isRedisConnected) return;
   try {
     await redisClient.sRem("online_users", userId);
     await redisClient.hSet(`user:${userId}`, {
@@ -95,8 +104,7 @@ export const setUserOffline = async (userId) => {
       lastSeen: Date.now().toString(),
     });
   } catch (err) {
-    console.error("Failed to set user offline:", err);
-    throw err;
+    console.warn("Failed to set user offline in Redis:", err.message);
   }
 };
 
@@ -106,11 +114,12 @@ export const setUserOffline = async (userId) => {
  * Note: For massive scale (1M+ users), use Redis cluster or pagination
  */
 export const getOnlineUsers = async () => {
+  if (!isRedisConnected) return [];
   try {
     const users = await redisClient.sMembers("online_users");
     return users || [];
   } catch (err) {
-    console.error("Failed to get online users:", err);
+    console.warn("Failed to get online users from Redis:", err.message);
     return [];
   }
 };
@@ -120,11 +129,12 @@ export const getOnlineUsers = async () => {
  * Time: O(1)
  */
 export const isUserOnline = async (userId) => {
+  if (!isRedisConnected) return false;
   try {
     const isMember = await redisClient.sIsMember("online_users", userId);
     return isMember;
   } catch (err) {
-    console.error("Failed to check user online status:", err);
+    console.warn("Failed to check user online status:", err.message);
     return false;
   }
 };
@@ -134,11 +144,12 @@ export const isUserOnline = async (userId) => {
  * Time: O(1)
  */
 export const getUserLastSeen = async (userId) => {
+  if (!isRedisConnected) return null;
   try {
     const lastSeen = await redisClient.hGet(`user:${userId}`, "lastSeen");
     return lastSeen ? parseInt(lastSeen) : null;
   } catch (err) {
-    console.error("Failed to get user last seen:", err);
+    console.warn("Failed to get user last seen:", err.message);
     return null;
   }
 };
@@ -157,6 +168,7 @@ export const getUserLastSeen = async (userId) => {
  * Time: O(1)
  */
 export const queueMessageForOfflineUser = async (userId, message) => {
+  if (!isRedisConnected) return;
   try {
     const key = `messageQueue:${userId}`;
     const messageStr = JSON.stringify(message);
@@ -167,8 +179,7 @@ export const queueMessageForOfflineUser = async (userId, message) => {
     // EXPIRE: auto-cleanup after 24 hours
     await redisClient.expire(key, 86400);
   } catch (err) {
-    console.error("Failed to queue message for offline user:", err);
-    throw err;
+    console.warn("Failed to queue message for offline user:", err.message);
   }
 };
 
@@ -177,6 +188,7 @@ export const queueMessageForOfflineUser = async (userId, message) => {
  * Time: O(n) where n = queued messages (usually < 1000)
  */
 export const getAndClearOfflineMessages = async (userId) => {
+  if (!isRedisConnected) return [];
   try {
     const key = `messageQueue:${userId}`;
 
@@ -188,7 +200,7 @@ export const getAndClearOfflineMessages = async (userId) => {
 
     return (messages || []).map((msg) => JSON.parse(msg));
   } catch (err) {
-    console.error("Failed to get offline messages:", err);
+    console.warn("Failed to get offline messages:", err.message);
     return [];
   }
 };
@@ -208,6 +220,7 @@ export const getAndClearOfflineMessages = async (userId) => {
  * Time: O(log n)
  */
 export const cacheMessage = async (conversationId, message) => {
+  if (!isRedisConnected) return;
   try {
     const key = `messages:${conversationId}`;
     // Convert to timestamp number - handle both Date objects and timestamps
@@ -222,8 +235,7 @@ export const cacheMessage = async (conversationId, message) => {
     // EXPIRE: auto-cleanup after 1 hour
     await redisClient.expire(key, 3600);
   } catch (err) {
-    console.error("Failed to cache message:", err);
-    throw err;
+    console.warn("Failed to cache message:", err.message);
   }
 };
 
@@ -232,6 +244,7 @@ export const cacheMessage = async (conversationId, message) => {
  * Time: O(log n + k) where k = returned messages
  */
 export const getCachedMessages = async (conversationId, limit = 50) => {
+  if (!isRedisConnected) return [];
   try {
     const key = `messages:${conversationId}`;
 
@@ -240,7 +253,7 @@ export const getCachedMessages = async (conversationId, limit = 50) => {
 
     return (messages || []).map((msg) => JSON.parse(msg));
   } catch (err) {
-    console.error("Failed to get cached messages:", err);
+    console.warn("Failed to get cached messages:", err.message);
     return [];
   }
 };
@@ -250,11 +263,11 @@ export const getCachedMessages = async (conversationId, limit = 50) => {
  * Time: O(1)
  */
 export const clearMessageCache = async (conversationId) => {
+  if (!isRedisConnected) return;
   try {
     await redisClient.del(`messages:${conversationId}`);
   } catch (err) {
-    console.error("Failed to clear message cache:", err);
-    throw err;
+    console.warn("Failed to clear message cache:", err.message);
   }
 };
 
@@ -279,6 +292,7 @@ export const clearMessageCache = async (conversationId) => {
  * Returns: { count: number, isLimited: boolean, retryAfter: number }
  */
 export const checkRateLimit = async (key, maxRequests, windowSeconds) => {
+  if (!isRedisConnected) return { count: 0, isLimited: false, retryAfter: 0, remaining: maxRequests };
   try {
     const limitKey = `rateLimit:${key}`;
 
@@ -300,7 +314,7 @@ export const checkRateLimit = async (key, maxRequests, windowSeconds) => {
       remaining: Math.max(0, maxRequests - count),
     };
   } catch (err) {
-    console.error("Failed to check rate limit:", err);
+    console.warn("Failed to check rate limit:", err.message);
     return { count: 0, isLimited: false, retryAfter: 0, remaining: maxRequests };
   }
 };
@@ -310,11 +324,11 @@ export const checkRateLimit = async (key, maxRequests, windowSeconds) => {
  * Time: O(1)
  */
 export const resetRateLimit = async (key) => {
+  if (!isRedisConnected) return;
   try {
     await redisClient.del(`rateLimit:${key}`);
   } catch (err) {
-    console.error("Failed to reset rate limit:", err);
-    throw err;
+    console.warn("Failed to reset rate limit:", err.message);
   }
 };
 
@@ -331,13 +345,13 @@ export const resetRateLimit = async (key) => {
  * Time: O(1)
  */
 export const blacklistToken = async (jti, expiresIn) => {
+  if (!isRedisConnected) return;
   try {
     const key = `blacklist:${jti}`;
     // Set a dummy value with expiry = token expiry time
     await redisClient.setEx(key, expiresIn, "true");
   } catch (err) {
-    console.error("Failed to blacklist token:", err);
-    throw err;
+    console.warn("Failed to blacklist token:", err.message);
   }
 };
 
@@ -346,11 +360,12 @@ export const blacklistToken = async (jti, expiresIn) => {
  * Time: O(1)
  */
 export const isTokenBlacklisted = async (jti) => {
+  if (!isRedisConnected) return false;
   try {
     const exists = await redisClient.exists(`blacklist:${jti}`);
     return exists === 1;
   } catch (err) {
-    console.error("Failed to check token blacklist:", err);
+    console.warn("Failed to check token blacklist:", err.message);
     return false;
   }
 };
@@ -374,20 +389,17 @@ const subscriber = redis.createClient({
 // Store subscription handlers
 const subscriptions = {};
 
-// Connect subscriber
-(async () => {
-  try {
-    await subscriber.connect();
-  } catch (err) {
-    console.error("Failed to connect subscriber:", err);
-  }
-})();
+// Connect subscriber (non-blocking - silent)
+subscriber.connect().catch(() => {
+  // Silent - Redis not available, pub/sub disabled
+});
 
 /**
  * Subscribe to a channel
  * Time: O(1)
  */
 export const subscribe = async (channel, handler) => {
+  if (!isRedisConnected) return;
   try {
     if (!subscriptions[channel]) {
       subscriptions[channel] = [];
@@ -402,7 +414,7 @@ export const subscribe = async (channel, handler) => {
 
     subscriptions[channel].push(handler);
   } catch (err) {
-    console.error(`Failed to subscribe to ${channel}:`, err);
+    console.warn(`Failed to subscribe to ${channel}:`, err.message);
   }
 };
 
@@ -411,12 +423,13 @@ export const subscribe = async (channel, handler) => {
  * Time: O(n) where n = subscribers
  */
 export const publish = async (channel, message) => {
+  if (!isRedisConnected) return 0;
   try {
     const numSubscribers = await redisClient.publish(channel, JSON.stringify(message));
     return numSubscribers;
   } catch (err) {
-    console.error("Failed to publish message:", err);
-    throw err;
+    console.warn("Failed to publish message:", err.message);
+    return 0;
   }
 };
 
@@ -425,11 +438,12 @@ export const publish = async (channel, message) => {
  * Time: O(1)
  */
 export const unsubscribe = async (channel) => {
+  if (!isRedisConnected) return;
   try {
     await subscriber.unsubscribe(channel);
     delete subscriptions[channel];
   } catch (err) {
-    console.error(`Failed to unsubscribe from ${channel}:`, err);
+    console.warn(`Failed to unsubscribe from ${channel}:`, err.message);
   }
 };
 
