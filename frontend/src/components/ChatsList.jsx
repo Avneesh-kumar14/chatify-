@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useChatStore } from "../store/useChatStore";
+import { useThemeStore } from "../store/useThemeStore";
 import UsersLoadingSkeleton from "./UsersLoadingSkeleton";
 import NoChatsFound from "./NoChatsFound";
 import { useAuthStore } from "../store/useAuthStore";
@@ -10,6 +11,9 @@ import ConfirmationModal from "./ConfirmationModal";
 function ChatsList() {
   const { getMyChatPartners, chats, isUsersLoading, setSelectedUser } = useChatStore();
   const { onlineUsers } = useAuthStore();
+  const theme = useThemeStore((state) => state.theme);
+  const getThemeConfig = useThemeStore((state) => state.getThemeConfig);
+  const themeConfig = getThemeConfig();
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [selectedChatToDelete, setSelectedChatToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -63,25 +67,54 @@ function ChatsList() {
 
   return (
     <>
-      {chats.map((chat) => (
+      {chats.map((chat) => {
+        const isOnline = onlineUsers.includes(chat._id);
+        return (
         <div
           key={chat._id}
-          className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 p-4 rounded-xl cursor-pointer hover:from-cyan-500/20 hover:to-blue-500/20 transition-all duration-300 group flex items-center justify-between hover:shadow-lg hover:shadow-cyan-500/20 border border-cyan-500/20 hover:border-cyan-500/40"
+          className={`bg-gradient-to-r ${themeConfig.bgGradient}/5 p-4 rounded-xl cursor-pointer 
+            hover:${themeConfig.bgGradient}/20 transition-all duration-300 group flex items-center justify-between
+            hover:shadow-lg hover:shadow-${themeConfig.border}/40 border border-${themeConfig.border}/20 hover:border-${themeConfig.border}/50`}
         >
           <div
-            className="flex items-center gap-3 flex-1"
+            className="flex items-center gap-4 flex-1"
             onClick={() => setSelectedUser(chat)}
           >
-            <div className={`avatar ${onlineUsers.includes(chat._id) ? "online" : "offline"}`}>
-              <div className="size-12 rounded-full ring-2 ring-cyan-500/40 hover:ring-cyan-400 transition-all group-hover:ring-cyan-400 shadow-lg shadow-cyan-500/20">
-                <img src={chat.profilePic || "/avatar.png"} alt={chat.fullName} className="group-hover:scale-105 transition-transform duration-200" />
+            <div className={`avatar ${isOnline ? "online" : "offline"} relative flex-shrink-0 group/avatar`}>
+              <div className={`size-14 rounded-full ring-2 ring-${themeConfig.border} ring-offset-2 ring-offset-slate-900
+                overflow-hidden transition-all duration-300 group-hover:scale-110 group-hover:ring-offset-4
+                shadow-lg shadow-${themeConfig.border}/30 group-hover:shadow-${themeConfig.border}/50
+                relative before:absolute before:inset-0 before:rounded-full before:bg-gradient-to-tr before:opacity-0
+                group-hover:before:opacity-10 before:transition-opacity before:duration-300`}>
+                <img 
+                  src={chat.profilePic || "/avatar.png"} 
+                  alt={chat.fullName}
+                  className="size-full object-cover group-hover/avatar:scale-110 transition-transform duration-300"
+                />
               </div>
+              {isOnline && (
+                <div className={`absolute bottom-0 right-0 size-3 rounded-full border-2 border-slate-900 
+                  bg-gradient-to-br ${themeConfig.bgGradient}/80 animate-pulse`}></div>
+              )}
             </div>
-            <h4 className="text-slate-100 font-semibold truncate group-hover:text-cyan-300 transition-colors duration-200">{chat.fullName}</h4>
+            <div className="flex-1 min-w-0">
+              <h4 className={`text-slate-100 font-semibold truncate group-hover:text-${themeConfig.border} 
+                transition-colors duration-300`}>
+                {chat.fullName}
+              </h4>
+              <p className={`text-xs transition-colors duration-300 ${
+                isOnline 
+                  ? `text-${themeConfig.border}/80 font-medium` 
+                  : "text-slate-500"
+              }`}>
+                {isOnline ? "● Active now" : "● Offline"}
+              </p>
+            </div>
           </div>
           <button
             onClick={(e) => handleDeleteConversation(chat, e)}
-            className="btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-all duration-200 text-error hover:bg-error/10"
+            className={`btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-all duration-200 
+              text-error hover:bg-error/10 hover:text-red-400`}
             title="Delete conversation"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -89,7 +122,8 @@ function ChatsList() {
             </svg>
           </button>
         </div>
-      ))}
+        );
+      })}
 
       {/* Delete Confirmation Modal */}
       <ConfirmationModal

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuthStore } from "../store/useAuthStore";
+import { useThemeStore } from "../store/useThemeStore";
 import { useChatStore } from "../store/useChatStore";
 import ChatHeader from "./ChatHeader";
 import NoChatHistoryPlaceholder from "./NoChatHistoryPlaceholder";
@@ -17,9 +18,24 @@ function ChatContainer() {
     unsubscribeFromMessages,
     setMessages,
   } = useChatStore();
-  const { authUser } = useAuthStore();
+  const { authUser, onlineUsers } = useAuthStore();
+  const theme = useThemeStore((state) => state.theme);
+  const getThemeConfig = useThemeStore((state) => state.getThemeConfig);
+  const themeConfig = getThemeConfig();
   const messageEndRef = useRef(null);
   const [hoveredMessageId, setHoveredMessageId] = useState(null);
+
+  // Color maps for received messages based on current theme
+  const receivedMessageBgMap = {
+    cyan: "bg-cyan-900/30 border-cyan-700/40",
+    blue: "bg-blue-900/30 border-blue-700/40",
+    purple: "bg-purple-900/30 border-purple-700/40",
+    emerald: "bg-emerald-900/30 border-emerald-700/40",
+    rose: "bg-rose-900/30 border-rose-700/40",
+    violet: "bg-violet-900/30 border-violet-700/40",
+    amber: "bg-amber-900/30 border-amber-700/40",
+  };
+  const receivedMessageBgClass = receivedMessageBgMap[themeConfig.border] || "bg-cyan-900/30 border-cyan-700/40";
 
   useEffect(() => {
     getMessagesByUserId(selectedUser._id);
@@ -66,6 +82,10 @@ function ChatContainer() {
               const senderIdValue = msg.senderIdValue || (typeof msg.senderId === 'string' ? msg.senderId : msg.senderId?._id);
               const authIdValue = authUser?._id;
               const isSentByMe = senderIdValue && authIdValue && senderIdValue.toString() === authIdValue.toString();
+              
+              // Get sender info
+              const senderInfo = typeof msg.senderId === 'object' ? msg.senderId : { _id: senderIdValue };
+              const isReceiverOnline = onlineUsers.includes(senderIdValue);
 
               return (
               <div
@@ -74,28 +94,53 @@ function ChatContainer() {
                 onMouseEnter={() => setHoveredMessageId(msg._id)}
                 onMouseLeave={() => setHoveredMessageId(null)}
               >
-                <div className="flex items-center gap-2">
+                {!isSentByMe && (
+                  <div className={`chat-image avatar relative flex-shrink-0`}>
+                    <div className={`w-10 h-10 rounded-full ring-2 ring-${themeConfig.border}/50
+                      overflow-hidden shadow-md shadow-${themeConfig.border}/20
+                      transition-all duration-300 hover:ring-${themeConfig.border}/80 hover:shadow-${themeConfig.border}/40`}>
+                      <img 
+                        src={senderInfo.profilePic || selectedUser?.profilePic || "/avatar.png"} 
+                        alt={senderInfo.fullName || "Sender"}
+                      />
+                    </div>
+                    {isReceiverOnline && (
+                      <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full 
+                        bg-gradient-to-br ${themeConfig.bgGradient} border border-slate-900`}></div>
+                    )}
+                  </div>
+                )}
+                
+                <div className="flex items-start gap-2">
                   <div
-                    className={`chat-bubble relative ${
+                    className={`chat-bubble relative transition-all duration-300 ${
                       msg.deletedAt
-                        ? "bg-slate-700 text-slate-400 italic"
+                        ? "bg-slate-700/50 text-slate-400 italic border border-slate-700/50"
                         : isSentByMe
-                        ? "bg-cyan-600 text-white"
-                        : "bg-slate-800 text-slate-200"
+                        ? `bg-gradient-to-br ${themeConfig.bgGradient} text-white shadow-lg shadow-${themeConfig.border}/30`
+                        : `${receivedMessageBgClass} text-slate-100 shadow-md shadow-slate-900/30`
                     }`}
                   >
                     {msg.deletedAt ? (
-                      <p>This message was deleted</p>
+                      <p className="text-sm">This message was deleted</p>
                     ) : (
                       <>
                         {msg.image && (
-                          <img src={msg.image} alt="Shared" className="rounded-lg h-48 object-cover" />
+                          <img 
+                            src={msg.image} 
+                            alt="Shared" 
+                            className="rounded-lg h-48 object-cover shadow-lg ring-2 ring-slate-700/50" 
+                          />
                         )}
-                        {msg.text && <p className="mt-2">{msg.text}</p>}
+                        {msg.text && <p className={`${msg.image ? 'mt-2' : ''} text-sm sm:text-base`}>{msg.text}</p>}
                         {msg.editedAt && (
-                          <p className="text-xs mt-1 opacity-60">(edited)</p>
+                          <p className="text-xs mt-1 opacity-60 italic">(edited)</p>
                         )}
-                        <p className="text-xs mt-1 opacity-75 flex items-center gap-1">
+                        <p className={`text-xs mt-2 flex items-center gap-1 ${
+                          isSentByMe 
+                            ? 'opacity-70 text-white' 
+                            : 'opacity-60 text-slate-400'
+                        }`}>
                           {new Date(msg.createdAt).toLocaleTimeString(undefined, {
                             hour: "2-digit",
                             minute: "2-digit",
@@ -114,6 +159,19 @@ function ChatContainer() {
                     />
                   )}
                 </div>
+                
+                {isSentByMe && (
+                  <div className={`chat-image avatar relative flex-shrink-0`}>
+                    <div className={`w-10 h-10 rounded-full ring-2 ring-${themeConfig.border}/50
+                      overflow-hidden shadow-md shadow-${themeConfig.border}/20
+                      transition-all duration-300 hover:ring-${themeConfig.border}/80 hover:shadow-${themeConfig.border}/40`}>
+                      <img 
+                        src={authUser?.profilePic || "/avatar.png"} 
+                        alt="You"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
               );
             })}

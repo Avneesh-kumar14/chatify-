@@ -1,11 +1,15 @@
 import { useRef, useState } from "react";
 import useKeyboardSound from "../hooks/useKeyboardSound";
+import { useThemeStore } from "../store/useThemeStore";
 import { useChatStore } from "../store/useChatStore";
 import toast from "react-hot-toast";
 import { ImageIcon, SendIcon, XIcon } from "lucide-react";
 
 function MessageInput() {
   const { playRandomKeyStrokeSound } = useKeyboardSound();
+  const theme = useThemeStore((state) => state.theme);
+  const getThemeConfig = useThemeStore((state) => state.getThemeConfig);
+  const themeConfig = getThemeConfig();
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState(null);
 
@@ -45,14 +49,15 @@ function MessageInput() {
   };
 
   return (
-    <div className="p-4 border-t border-slate-700/30 bg-gradient-to-r from-slate-900/40 via-slate-900/30 to-slate-900/40 backdrop-blur-md">
+    <div className={`p-4 border-t border-${themeConfig.border}/20 bg-gradient-to-r from-slate-900/50 via-slate-900/40 to-slate-900/50 backdrop-blur-lg`}>
       {imagePreview && (
         <div className="max-w-3xl mx-auto mb-3 flex items-center" style={{animation: "slideIn 0.3s ease-out"}}>
           <div className="relative group">
             <img
               src={imagePreview}
               alt="Preview"
-              className="w-20 h-20 object-cover rounded-xl border-2 border-cyan-500/60 group-hover:border-cyan-400 transition-all shadow-lg shadow-cyan-500/20 group-hover:shadow-cyan-500/40"
+              className={`w-20 h-20 object-cover rounded-xl border-2 border-${themeConfig.border}/60 group-hover:border-${themeConfig.border} 
+                transition-all shadow-lg shadow-${themeConfig.border}/30 group-hover:shadow-${themeConfig.border}/50`}
             />
             <button
               onClick={removeImage}
@@ -74,7 +79,9 @@ function MessageInput() {
             setText(e.target.value);
             isSoundEnabled && playRandomKeyStrokeSound();
           }}
-          className="flex-1 bg-slate-800/60 border border-slate-700/40 rounded-xl py-3 px-4 text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all duration-200 hover:border-slate-600 hover:bg-slate-800/80 shadow-lg shadow-slate-900/20"
+          className={`flex-1 bg-slate-800/60 border border-slate-700/40 rounded-xl py-3 px-4 text-slate-100 placeholder-slate-400 
+            focus:ring-2 focus:ring-${themeConfig.border} focus:border-transparent transition-all duration-200 
+            hover:border-${themeConfig.border}/50 hover:bg-slate-800/80 shadow-lg shadow-slate-900/20`}
           placeholder="Type a message... (Shift+Enter for new line)"
         />
 
@@ -90,7 +97,9 @@ function MessageInput() {
           type="button"
           onClick={() => fileInputRef.current?.click()}
           className={`btn btn-ghost btn-sm rounded-xl px-4 py-3 transition-all duration-200 ${
-            imagePreview ? "text-cyan-400 bg-cyan-500/15 border border-cyan-500/30 hover:bg-cyan-500/25" : "text-slate-400 hover:text-cyan-400 hover:bg-slate-700/40 border border-transparent hover:border-slate-600"
+            imagePreview 
+              ? `text-${themeConfig.border} bg-${themeConfig.border}/15 border border-${themeConfig.border}/30 hover:bg-${themeConfig.border}/25` 
+              : `text-slate-400 hover:text-${themeConfig.border} hover:bg-slate-700/40 border border-transparent hover:border-slate-600`
           }`}
           title="Attach image"
         >
@@ -99,7 +108,10 @@ function MessageInput() {
         <button
           type="submit"
           disabled={!text.trim() && !imagePreview}
-          className="bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-xl px-4 py-3 font-semibold hover:from-cyan-600 hover:to-blue-600 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-cyan-500/60 hover:scale-105 active:scale-95 border border-cyan-400/30 hover:border-cyan-300"
+          className={`bg-gradient-to-r ${themeConfig.bgGradient} text-white rounded-xl px-4 py-3 font-semibold 
+            hover:shadow-lg hover:shadow-${themeConfig.border}/60 hover:scale-105 active:scale-95 
+            transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed
+            border border-${themeConfig.border}/30 hover:border-${themeConfig.border}`}
           title="Send message (Enter)"
         >
           <SendIcon className="w-5 h-5" />
