@@ -17,7 +17,7 @@ Highlights:
 - 🧠 Zustand for State Management
 - 🧑‍💻 Git & GitHub Workflow (branches, PRs, merges)
 - 🚀 Easy Deployment (free-tier friendly with Sevalla)
-
+-    Theme toggle is added 
 ---
 
 ## 🧪 .env Setup
